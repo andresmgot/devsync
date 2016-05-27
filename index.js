@@ -37,8 +37,9 @@ function sync(file, remotePath, host, port, user){
            if (error) {
              if (error.message.match('No such file or directory')) {
                console.log(`File ${file} no longer exists`);
+               removeFromList(file);
              } else {
-               console.log('Failed to transfer, saving for later');
+               console.log('Failed to transfer, saving for later:', error.message);
                addToList(file);
              }
              return;
@@ -51,7 +52,7 @@ function sync(file, remotePath, host, port, user){
 }
 
 fs.watch(config.localDir, {recursive: true, encoding: 'buffer'}, (event,filename) => {
-  if (filename && !filename.match('#') && !filename.match(/.*~/)) {
+  if (filename && !filename.match('#') && !filename.match(/.*~/) && !filename.match(/.*lock/)) {
     sync(filename,
          path.join(config.remoteDir, filename),
          config.host, config.port, config.user);
