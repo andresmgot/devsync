@@ -80,24 +80,25 @@ function remoteRemove(file, host, port, user) {
 }
 
 fs.watch(config.localDir, {recursive: true, encoding: 'buffer'}, (event,filename) => {
+  let deleted = false;
   if (event === 'rename') {
-    fs.access(path.join(config.localDir, filename), fs.F_OK, (err) => {
+    fs.accessSync(path.join(config.localDir, filename), fs.F_OK, (err) => {
       if(err) {
         // File removed, deleting remotely
+        deleted = true;
         remoteRemove(path.join(config.remoteDir, filename),
                      config.host, config.port, config.user);
-      } else {
-        if (_.every(filesToIgnore, (f) => !filename.match(f))) {
-          if (syncInProgress) {
-            addToList(filename);
-          } else {
-            scp(filename,
-                path.join(config.remoteDir, filename),
-                config.host, config.port, config.user);
-          }
-        }
       }
     });
+  }
+  if (!deleted && _.every(filesToIgnore, (f) => !filename.match(f))) {
+    if (syncInProgress) {
+      addToList(filename);
+    } else {
+      scp(filename,
+          path.join(config.remoteDir, filename),
+          config.host, config.port, config.user);
+    }
   }
 });
 
