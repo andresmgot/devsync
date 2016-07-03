@@ -4,6 +4,7 @@
   "description": "To remote sync through ssh",
   "main": "index.js",
   "dependencies": {
+    "chokidar": "^1.6.0",
     "lodash": "^4.13.1"
   }
 }

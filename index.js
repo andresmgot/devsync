@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const chokidar = require('chokidar');
 const path = require('path');
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json')));
 const exec = require('child_process').exec;
@@ -40,14 +41,17 @@ function scp(file, remotePath, host, port, user){
     filesBeingTransfered.push(file);
     let remoteExists = false;
     try {
-      execSync(`ssh -o Port=${port} ${user}@${host} 'ls ${remotePath}'`, (error) => {
-        if(!error) remoteExists = true;
-      });
+      execSync(`ssh -o Port=${port} ${user}@${host} 'ls ${remotePath}'`);
+      remoteExists = true;
     } catch (e) {}
     let orig = path.join(config.localDir, file);
     if(remoteExists && fs.statSync(path.join(config.localDir, file)).isDirectory()) {
       orig = orig + '/*';
+      console.log('Remote exists and it is a directory');
+    } else {
+      console.log('Remote exists but it is not a directory');
     }
+    console.log(`scp -r -o Port=${port} ${orig} ${user}@${host}:${remotePath}`);
     exec(`scp -r -o Port=${port} ${orig} ${user}@${host}:${remotePath}`,
          (error, stdout, stderr) => {
            _.pull(filesBeingTransfered, file);
@@ -76,6 +80,8 @@ function sync(localDir, remoteDir, host, port, user){
            syncInProgress = false;
            if (error) {
              console.log(`Failed to sync:`, error);
+           } else {
+             console.log('Sync finished');
            }
          });
   }
@@ -85,28 +91,43 @@ function remoteRemove(file, host, port, user) {
   exec(`ssh -o Port=${port} ${user}@${host} 'rm -r ${file}'`, (error) => {});
 }
 
-fs.watch(config.localDir, {recursive: true, encoding: 'buffer'}, (event,filename) => {
+function deleteFile(filePath) {
+  const filename = filePath.replace(`${config.localDir}/`, '');
+  remoteRemove(path.join(config.remoteDir, filename),
+               config.host, config.port, config.user);
+}
+
+let active = false;
+function syncFile(filePath) {
+  const filename = filePath.replace(`${config.localDir}/`, '');
   let deleted = false;
-  if (event === 'rename') {
-    try {
-      fs.accessSync(path.join(config.localDir, filename), fs.F_OK);
-    } catch (e) {
-      // File removed, deleting remotely
-      deleted = true;
-      remoteRemove(path.join(config.remoteDir, filename),
-                   config.host, config.port, config.user);
-    }
-  }
-  if (!deleted && _.every(filesToIgnore, (f) => !filename.match(f))) {
-    if (syncInProgress) {
-      addToList(filename);
-    } else {
-      scp(filename,
+  if(active) {
+    if (_.every(filesToIgnore, (f) => !filename.match(f))) {
+      if (syncInProgress) {
+        addToList(filename);
+      } else {
+        scp(filename,
           path.join(config.remoteDir, filename),
-          config.host, config.port, config.user);
+          config.host, config.port, config.user
+        );
+      }
     }
   }
-});
+}
+
+console.log('Scanning directories to watch on', config.localDir);
+chokidar.watch(config.localDir, {recursive: true, encoding: 'buffer'})
+  .on('add', syncFile)
+  .on('addDir', syncFile)
+  .on('change', syncFile)
+  .on('unlink', deleteFile)
+  .on('unlinkDir', deleteFile)
+  .on('ready', () => {
+    active = true;
+    console.log('Initial scan complete. Runing first sync');
+    sync(config.localDir, config.remoteDir,
+         config.host, config.port, config.user);
+  });
 
 setInterval(function() {
   if (!_.isEmpty(filesToTransfer) && !syncInProgress) {
