@@ -75,7 +75,6 @@ function sync(localDir, remoteDir, host, port, user){
       })
     }
     rsyncCommand += ` ${path.join(config.localDir, '*')} ${user}@${host}:${remoteDir}`;
-    console.log(rsyncCommand);
     exec(rsyncCommand, (error, stdout, stderr) => {
            syncInProgress = false;
            if (error) {
