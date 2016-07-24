@@ -6,7 +6,7 @@
 Watch for changes in projects folder and sync
 
 ## Usage
-`npm run start`
+`npm start`
 
 ## Configure
 config.json:
