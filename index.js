@@ -2,24 +2,20 @@
 
 const fs = require('fs');
 const chokidar = require('chokidar');
+const minimatch = require('minimatch');
 const path = require('path');
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json')));
 const exec = require('child_process').exec;
 const execSync = require('child_process').execSync;
 const toTransferFile = path.join(__dirname, 'to-transfer.json');
-const ignoreFile = path.join(__dirname, '.ignore');
 const _ = require('lodash');
 const filesBeingTransfered = [];
 let syncInProgress = false;
 let filesToTransfer = [];
-let filesToIgnore = [];
+let filesToIgnore = config.ignore || [];
 try {
   filesToTransfer = JSON.parse(fs.readFileSync(toTransferFile, 'utf8'));
 } catch (e) {/* not empty */}
-
-try {
-  filesToIgnore = _.compact(fs.readFileSync(ignoreFile, 'utf8').split('\n'));
-} catch(e) {/* not empty */}
 
 function addToList(file) {
   if(!_.includes(filesToTransfer, file)) {
@@ -41,17 +37,14 @@ function scp(file, remotePath, host, port, user){
     filesBeingTransfered.push(file);
     let remoteExists = false;
     try {
-      execSync(`ssh -o Port=${port} ${user}@${host} 'ls ${remotePath}'`);
+      execSync(`ssh -o Port=${port} ${user}@${host} 'ls ${remotePath}' > /dev/null 2>&1`);
       remoteExists = true;
     } catch (e) {}
     let orig = path.join(config.localDir, file);
     if(remoteExists && fs.statSync(path.join(config.localDir, file)).isDirectory()) {
       orig = orig + '/*';
-      console.log('Remote exists and it is a directory');
-    } else {
-      console.log('Remote exists but it is not a directory');
     }
-    console.log(`scp -r -o Port=${port} ${orig} ${user}@${host}:${remotePath}`);
+    console.log(`Transfering ${file}`);
     exec(`scp -r -o Port=${port} ${orig} ${user}@${host}:${remotePath}`,
          (error, stdout, stderr) => {
            _.pull(filesBeingTransfered, file);
@@ -75,8 +68,15 @@ function scp(file, remotePath, host, port, user){
 function sync(localDir, remoteDir, host, port, user){
   if (!syncInProgress) {
     syncInProgress = true;
-    exec(`rsync -r -e "ssh -o Port=${port}" ${path.join(config.localDir, '*')} ${user}@${host}:${remoteDir}`,
-         (error, stdout, stderr) => {
+    let rsyncCommand = `rsync -r -e "ssh -o Port=${port}"`;
+    if(!_.isEmpty(filesToIgnore)) {
+      _.each(filesToIgnore, f => {
+        rsyncCommand += ` --exclude ${path.join('**', f)}`;
+      })
+    }
+    rsyncCommand += ` ${path.join(config.localDir, '*')} ${user}@${host}:${remoteDir}`;
+    console.log(rsyncCommand);
+    exec(rsyncCommand, (error, stdout, stderr) => {
            syncInProgress = false;
            if (error) {
              console.log(`Failed to sync:`, error);
@@ -88,6 +88,7 @@ function sync(localDir, remoteDir, host, port, user){
 }
 
 function remoteRemove(file, host, port, user) {
+  console.log(`Deleting ${file}`);
   exec(`ssh -o Port=${port} ${user}@${host} 'rm -r ${file}'`, (error) => {});
 }
 
@@ -102,7 +103,7 @@ function syncFile(filePath) {
   const filename = filePath.replace(`${config.localDir}/`, '');
   let deleted = false;
   if(active) {
-    if (_.every(filesToIgnore, (f) => !filename.match(f))) {
+    if (_.every(filesToIgnore, (f) => !minimatch(filename, f))) {
       if (syncInProgress) {
         addToList(filename);
       } else {
