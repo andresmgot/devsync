@@ -6,7 +6,8 @@
   "dependencies": {
     "chokidar": "^1.6.0",
     "lodash": "^4.13.1",
-    "minimatch": "^3.0.2"
+    "minimatch": "^3.0.2",
+    "nami-utils": "0.0.1"
   },
   "scripts": {
     "start": "node index.js"
