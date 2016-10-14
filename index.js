@@ -7,23 +7,18 @@ const minimatch = require('minimatch');
 const config = JSON.parse(fs.readFileSync(nfile.join(__dirname, 'config.json')));
 const exec = require('child_process').exec;
 const execSync = require('child_process').execSync;
-const toTransferFile = nfile.join(__dirname, 'to-transfer.json');
 const _ = require('lodash');
 const filesBeingTransfered = [];
-let filesToTransfer = [];
+const filesToTransfer = [];
 const filesToIgnore = config.ignore || [];
 const projects = {};
 setInterval(function() {
   _.each(nfile.glob(nfile.join(config.localDir, '*')), f => projects[f] = 0);
 }, 10000);
-if (nfile.exists(toTransferFile)) {
-  filesToTransfer = JSON.parse(nfile.read(toTransferFile));
-}
 
 function addToList(file) {
   if (!_.includes(filesToTransfer, file)) {
     filesToTransfer.push(file);
-    fs.writeFileSync(toTransferFile, JSON.stringify(filesToTransfer));
   }
 }
 
@@ -31,7 +26,6 @@ function removeFromList(file, options) {
   options = _.defaults(options || {}, {all: false});
   if (_.includes(filesToTransfer, file)) {
     _.pull(filesToTransfer, file);
-    fs.writeFileSync(toTransferFile, filesToTransfer);
   }
 }
 
@@ -42,7 +36,7 @@ function sync(localDir, remoteDir, host, port, user) {
       rsyncCommand += ` --exclude ${nfile.join('**', f)}`;
     });
   }
-  rsyncCommand += ` ${nfile.join(config.localDir, '*')} ${user}@${host}:${remoteDir}`;
+  rsyncCommand += ` ${nfile.join(localDir, '*')} ${user}@${host}:${remoteDir}`;
   exec(rsyncCommand, (error) => {
     if (error) {
       console.log(`Failed to sync:`, error);
